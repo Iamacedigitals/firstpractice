@@ -1,5 +1,7 @@
 // Building the structs for the websocket/SSE
 
+use std::io::ErrorKind::ResourceBusy;
+
 use reqwest::Client;
 use serde::Deserialize;
 use reqwest_eventsource::{EventSource, Event};
@@ -40,7 +42,7 @@ struct WIKIResponse {
     #[serde(rename = "type")]
     article_type: String,
     #[serde(default)]
-    id: Option<u64>,    // <- This is th
+    id: Option<u64>,    // <- This is the page id 
     title: Option<String>,
     user: Option<String>,
     bot: Option<bool>,
@@ -55,7 +57,7 @@ struct WIKIEdits{
     user:String,
     bot:bool,
     comment:Option<String>,
-    lenght: Option<LenghtChange>,
+    length: Option<LenghtChange>,
     timestamp: u64,
 
 }
@@ -108,7 +110,7 @@ async fn getWikiEdits(url:&str, client: Client) -> Result<(), Box<dyn std::error
             match event{
                 Ok(Event::Open) => println!("Connection Open"),
                 Ok(Event::Message(message)) => match serde_json::from_str::<WIKIEdits>(&message.data){
-                    Ok(wikidata) => println!("{:?}", wikidata),
+                    Ok(wikieditdata) => println!("{:?}", wikieditdata),
                     Err(e) => println!("Parse Error: {e}"),
                 },
                 Err(e)=> {
@@ -123,4 +125,19 @@ async fn getWikiEdits(url:&str, client: Client) -> Result<(), Box<dyn std::error
         println!("Reconnecting in 5s...");
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
+}
+async fn filterWikiEdits(response:WIKIEdits){
+    if response.event_type == "edit"{
+        if let Some(length) = &response.length{
+            let change = length.new.unwrap_or(0) - length.old.unwrap_or(0);
+            let is_anonymous = response.user.parse::<std::net::IpAddr>().is_ok();
+            if change < -1000 {
+                println!("❗Large deleting by {} on \"{}\": {} ",response.user,response.title,-change)
+            };
+            if is_anonymous{
+                println!("👺 Anonymous Edit by {} on \"{}\" ",response.user,response.title)
+            }
+        }
+    }
+    return ;
 }
