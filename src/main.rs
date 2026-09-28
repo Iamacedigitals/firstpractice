@@ -110,7 +110,7 @@ async fn getWikiEdits(url:&str, client: Client) -> Result<(), Box<dyn std::error
             match event{
                 Ok(Event::Open) => println!("Connection Open"),
                 Ok(Event::Message(message)) => match serde_json::from_str::<WIKIEdits>(&message.data){
-                    Ok(wikieditdata) => println!("{:?}", wikieditdata),
+                    Ok(wikieditdata) =>filterWikiEdits(&wikieditdata).await,
                     Err(e) => println!("Parse Error: {e}"),
                 },
                 Err(e)=> {
@@ -126,7 +126,7 @@ async fn getWikiEdits(url:&str, client: Client) -> Result<(), Box<dyn std::error
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
 }
-async fn filterWikiEdits(response:WIKIEdits){
+async fn filterWikiEdits(response:&WIKIEdits){
     if response.event_type == "edit"{
         if let Some(length) = &response.length{
             let change = length.new.unwrap_or(0) - length.old.unwrap_or(0);
