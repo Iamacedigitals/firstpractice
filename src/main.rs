@@ -5,6 +5,8 @@ use reqwest::Client;
 use serde::Deserialize;
 use reqwest_eventsource::{EventSource, Event};
 use futures_util::StreamExt;
+use std::collections::{HashMap, HashSet};
+mod filter;
 
 #[derive(serde::Deserialize)]
 #[derive(Debug)]
@@ -50,8 +52,9 @@ struct WIKIResponse {
 }
 #[derive(serde::Deserialize,Debug)]
 struct WIKIEdits{
+    id: Option<i64>,
     #[serde(rename = "type")]
-    event_type: String,
+    event_type: String, 
     title:String,
     user:String,
     bot:bool,
@@ -65,6 +68,16 @@ struct LenghtChange{
     old: Option<i64>,
     new: Option<i64>,
 }
+
+#[derive(serde::Deserialize, Debug)]
+struct ArticleMetrics {
+    page_id: i64,
+    title: String,
+    suspicious_edit_count: u32,
+    unique_ip_editors: HashSet<String>,
+    consecutive_reverts: u32,
+}
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>>{
@@ -105,9 +118,9 @@ async fn getWIKIResponse(url:&str, client: Client) -> Result<(), Box<dyn std::er
     }
 }
 async fn getWikiEdits(url:&str, client: Client) -> Result<(), Box<dyn std::error::Error>>{    
-    let pg_url = "postgres://postgres@localhost:5432/postgres";
-    let data_pool = PgPoolOptions::new().max_connections(5).connect(pg_url).await?;
-    println!("Connected to postgres");
+    // let pg_url = "postgres://postgres@localhost:5432/postgres";
+    // let data_pool = PgPoolOptions::new().max_connections(5).connect(pg_url).await?;
+    // println!("Connected to postgres");
     loop {
         let client_request = client.get(url);
         let mut response = EventSource::new(client_request)?;
@@ -115,7 +128,8 @@ async fn getWikiEdits(url:&str, client: Client) -> Result<(), Box<dyn std::error
             match event{
                 Ok(Event::Open) => println!("Connection Open"),
                 Ok(Event::Message(message)) => match serde_json::from_str::<WIKIEdits>(&message.data){
-                    Ok(wikieditdata) =>filterWikiEdits(&data_pool, &wikieditdata).await?,
+                    Ok(wikieditdata) => println!("{:?}", wikieditdata),
+                    //filterWikiEdits(&data_pool, &wikieditdata).await?
                     Err(e) => println!("Parse Error: {e}"),
                 },
                 Err(e)=> {
@@ -130,28 +144,6 @@ async fn getWikiEdits(url:&str, client: Client) -> Result<(), Box<dyn std::error
         println!("Reconnecting in 5s...");
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
-}
-async fn filterWikiEdits(pool: &sqlx::PgPool, response:&WIKIEdits)-> Result<(), sqlx::Error> {
-    insert_edit(pool, response).await?;
-    if response.event_type == "edit"{
-        if let Some(length) = &response.length{
-            let change = length.new.unwrap_or(0) - length.old.unwrap_or(0);
-            let is_anonymous = response.user.parse::<std::net::IpAddr>().is_ok();
-
-            if length.old > length.new{
-                if length.new <= Some(0){
-                    println!("❗Page Blanking by {} on \"{}\" ",response.user,response.title)
-                }
-            }
-            if change < -1000 {
-                println!("❗Large deleting by {} on \"{}\": {} ",response.user,response.title,-change)
-            };
-            if is_anonymous{
-                println!("👺 Anonymous Edit by {} on \"{}\" ",response.user,response.title)
-            }
-        }
-    }
-    Ok(())
 }
 
 async fn insert_edit(pool: &sqlx::PgPool, edit: &WIKIEdits) -> Result<(), sqlx::Error> {
