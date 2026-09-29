@@ -1,33 +1,7 @@
 use serde::Deserialize;
 use serde;
-use std::{collections::{HashMap, HashSet}, net::IpAddr};
-
-#[derive(serde::Deserialize,Debug)]
-pub struct WIKIEdits{
-    #[serde(rename = "type")]
-    event_type: String, 
-    id: Option<i64>,
-    title:String,
-    user:String,
-    bot:bool,
-    comment:Option<String>,
-    length: Option<LenghtChange>,
-    timestamp: u64,
-
-}
-#[derive(serde::Deserialize,Debug)]
-struct LenghtChange{
-    old: Option<i64>,
-    new: Option<i64>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct ArticleMetrics {
-    id: Option<i64>,
-    suspicious_edit_count: u32,
-    unique_ip_editors: HashSet<IpAddr>,
-    consecutive_reverts: u32,
-}
+use std::collections::{HashMap, HashSet};
+use crate::{WIKIEdits, ArticleMetrics, LenghtChange};
 
 
 fn relative_change(response:&WIKIEdits) -> f64{
@@ -65,10 +39,10 @@ fn filter_page_blanking(metrics: &mut ArticleMetrics, response: &WIKIEdits) {
     }
 }
 
-pub async fn filter_wiki_edits(pool: &sqlx::PgPool,response: &WIKIEdits, metrics_store: &mut HashMap<String, ArticleMetrics>,) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn filter_wiki_edits(response: &WIKIEdits, metrics_store: &mut HashMap<Option<i64>, ArticleMetrics>,) -> Result<(), Box<dyn std::error::Error>> {
     if response.event_type == "edit" && response.bot != true {
         let metrics = metrics_store
-            .entry(response.title.clone())
+            .entry(response.id)
             .or_insert_with(|| ArticleMetrics {
                 id: response.id,
                 suspicious_edit_count: 0,

@@ -6,7 +6,9 @@ use serde::Deserialize;
 use reqwest_eventsource::{EventSource, Event};
 use futures_util::StreamExt;
 use std::collections::{HashMap, HashSet};
+use std::net::IpAddr;
 mod filter;
+use filter::filter_wiki_edits;
 
 #[derive(serde::Deserialize)]
 #[derive(Debug)]
@@ -51,10 +53,10 @@ struct WIKIResponse {
     comment: Option<String>,
 }
 #[derive(serde::Deserialize,Debug)]
-struct WIKIEdits{
-    id: Option<i64>,
+pub struct WIKIEdits{
     #[serde(rename = "type")]
     event_type: String, 
+    id: Option<i64>,
     title:String,
     user:String,
     bot:bool,
@@ -69,12 +71,11 @@ struct LenghtChange{
     new: Option<i64>,
 }
 
-#[derive(serde::Deserialize, Debug)]
-struct ArticleMetrics {
-    page_id: i64,
-    title: String,
+#[derive(Deserialize, Debug)]
+pub struct ArticleMetrics {
+    id: Option<i64>,
     suspicious_edit_count: u32,
-    unique_ip_editors: HashSet<String>,
+    unique_ip_editors: HashSet<IpAddr>,
     consecutive_reverts: u32,
 }
 
@@ -85,7 +86,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
     let client = reqwest::Client::builder()
             .user_agent("WorkingAPI/0.1 (davidodii695@gmail.com)")
             .build()?;
-    getWikiEdits(url, client).await
+    let mut metrics_store: HashMap<Option<i64>, ArticleMetrics> = HashMap::new();
+    getWikiEdits(url, client, &mut metrics_store).await
     //Ok(())
 }
 
@@ -117,7 +119,7 @@ async fn getWIKIResponse(url:&str, client: Client) -> Result<(), Box<dyn std::er
         tokio::time::sleep(std::time::Duration::from_secs(5)).await; 
     }
 }
-async fn getWikiEdits(url:&str, client: Client) -> Result<(), Box<dyn std::error::Error>>{    
+async fn getWikiEdits(url:&str, client: Client, metrics_store:&mut HashMap<Option<i64>, ArticleMetrics>) -> Result<(), Box<dyn std::error::Error>>{    
     // let pg_url = "postgres://postgres@localhost:5432/postgres";
     // let data_pool = PgPoolOptions::new().max_connections(5).connect(pg_url).await?;
     // println!("Connected to postgres");
@@ -128,8 +130,7 @@ async fn getWikiEdits(url:&str, client: Client) -> Result<(), Box<dyn std::error
             match event{
                 Ok(Event::Open) => println!("Connection Open"),
                 Ok(Event::Message(message)) => match serde_json::from_str::<WIKIEdits>(&message.data){
-                    Ok(wikieditdata) => println!("{:?}", wikieditdata),
-                    //filterWikiEdits(&data_pool, &wikieditdata).await?
+                    Ok(wikieditdata) => filter_wiki_edits(&wikieditdata, metrics_store).await?,
                     Err(e) => println!("Parse Error: {e}"),
                 },
                 Err(e)=> {
