@@ -35,14 +35,16 @@ fn relative_change(response:&WIKIEdits) -> f64{
     if let Some(len) = &response.length{
         let delta =  len.new.unwrap_or(0) - len.old.unwrap_or(0); // 300 - 250 = 50, // 100 - 250 = -150,  // 600 - 250 = 350
         if let Some(old_len) = &len.old{ 
-            relative_delta = (delta / old_len) as f64;
+            if *old_len != 0 {
+                relative_delta = delta as f64 / *old_len as f64;
+            }
         }
     }
     relative_delta
 }
 
 // Filters by edit bytes; Uses the relative byte to check for the volume of the edits befor passing it
-async fn filter_edit_bytes (metrics:&mut ArticleMetrics, response:&WIKIEdits){
+fn filter_edit_bytes (metrics:&mut ArticleMetrics, response:&WIKIEdits){
     if let Some(len) = &response.length{
         let delta =  len.new.unwrap_or(0) - len.old.unwrap_or(0); // 300 - 250 = 50, // 100 - 250 = -150,  // 600 - 250 = 350 // 50/250 = 0.2, // -150/250 == -0.6 // 350/250 == 1.4 -- Very Extreme
             if relative_change(response) < -0.5 || relative_change(response) > 0.5{
@@ -52,14 +54,17 @@ async fn filter_edit_bytes (metrics:&mut ArticleMetrics, response:&WIKIEdits){
     }
 }
 
-async fn filter_page_blanking(metrics:&mut ArticleMetrics, response:&WIKIEdits){
-    if let Some(len) = &response.length{ 
-        if relative_change(response) <= -0.5 {
+fn filter_page_blanking(metrics: &mut ArticleMetrics, response: &WIKIEdits) {
+    if let Some(len) = &response.length {
+        let new_len = len.new.unwrap_or(0);
+        let old_len = len.old.unwrap_or(0);
+        if new_len <= 5 && old_len > 100 {  // was substantial, now nearly empty
             metrics.suspicious_edit_count += 1;
-            println!("❗Page blanking by {} on \"{}\" ",response.user,response.title)
+            println!("❗Page blanking by {} on \"{}\"", response.user, response.title);
         }
     }
 }
+
 pub async fn filter_wiki_edits(pool: &sqlx::PgPool,response: &WIKIEdits, metrics_store: &mut HashMap<String, ArticleMetrics>,) -> Result<(), Box<dyn std::error::Error>> {
     if response.event_type == "edit" && response.bot != true {
         let metrics = metrics_store
@@ -75,8 +80,8 @@ pub async fn filter_wiki_edits(pool: &sqlx::PgPool,response: &WIKIEdits, metrics
             metrics.unique_ip_editors.insert(ip);
         }
 
-        filter_edit_bytes(metrics, response).await;
-        filter_page_blanking(metrics, response).await;
+        filter_edit_bytes(metrics, response);
+        filter_page_blanking(metrics, response);
     }
     Ok(())
 }
