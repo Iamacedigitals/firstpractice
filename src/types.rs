@@ -49,7 +49,7 @@ pub struct WIKIResponse {
 pub struct WIKIEdits{
     #[serde(rename = "type")]
     pub event_type: String, 
-    pub id: Option<i64>,
+    pub page_id: Option<i64>,
     pub title:String,
     pub user:String,
     pub bot:bool,
