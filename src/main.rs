@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
             .user_agent("WorkingAPI/0.1 (davidodii695@gmail.com)")
             .build()?;
     let mut metrics_store: HashMap<Option<i64>, ArticleMetrics> = HashMap::new();
-    get_wiki_edits(url, client, &mut metrics_store).await
+    get_wiki_edits(&pool, url, client, &mut metrics_store).await
     //Ok(())
 }
 
@@ -58,7 +58,7 @@ async fn get_wiki_response(url:&str, client: Client) -> Result<(), Box<dyn std::
         tokio::time::sleep(std::time::Duration::from_secs(5)).await; 
     }
 }
-async fn get_wiki_edits(url:&str, client: Client, metrics_store:&mut HashMap<Option<i64>, ArticleMetrics>) -> Result<(), Box<dyn std::error::Error>>{
+async fn get_wiki_edits( pool:&sqlx::PgPool ,url:&str, client: Client, metrics_store:&mut HashMap<Option<i64>, ArticleMetrics>) -> Result<(), Box<dyn std::error::Error>>{
     loop {
         let client_request = client.get(url);
         let mut response = EventSource::new(client_request)?;
@@ -66,7 +66,7 @@ async fn get_wiki_edits(url:&str, client: Client, metrics_store:&mut HashMap<Opt
             match event{
                 Ok(Event::Open) => println!("Connection Open"),
                 Ok(Event::Message(message)) => match serde_json::from_str::<WIKIEdits>(&message.data){
-                    Ok(wikieditdata) => filter_wiki_edits(&wikieditdata, metrics_store).await?,
+                    Ok(wikieditdata) => filter_wiki_edits(pool, &wikieditdata, metrics_store).await?,
                     Err(e) => println!("Parse Error: {e}"),
                 },
                 Err(e)=> {

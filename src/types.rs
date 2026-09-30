@@ -53,6 +53,8 @@ pub struct WIKIEdits{
     pub title:String,
     pub user:String,
     pub bot:bool,
+    pub namespace:i32,
+    pub wiki: String,
     pub comment:Option<String>,
     pub length: Option<LenghtChange>,
     pub timestamp: u64,
