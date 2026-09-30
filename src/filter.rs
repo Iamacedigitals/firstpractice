@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde;
 use std::collections::{HashMap, HashSet};
-use crate::{WIKIEdits, ArticleMetrics, LenghtChange};
+use crate::types::{WIKIEdits, ArticleMetrics, LenghtChange};
 
 
 fn relative_change(response:&WIKIEdits) -> f64{
