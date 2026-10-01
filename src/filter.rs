@@ -1,4 +1,3 @@
-use serde;
 use std::collections::{HashMap, HashSet};
 use crate::{types::{WIKIEdits, ArticleMetrics, EditRecord, FlaggedEdit, ArticleMetricsRow}, db::{insert_edit_record, insert_flagged_edit, insert_delta_snapshot}};
 
