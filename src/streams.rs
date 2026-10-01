@@ -16,9 +16,9 @@ pub async fn connect_db() -> Result<sqlx::PgPool, Box<dyn std::error::Error>>{
     println!("DB URL: {}", std::env::var("DATABASE_URL").unwrap_or("MISSING".into()));
     Ok(data_pool)
 }
-async fn connect_locale(){
-    let pg_url = "postgres://postgres:1234@localhost:5432/test";
-    let data_pool = PgPoolOptions::new().max_connections(5).connect(pg_url).await;
+pub async fn _connect_locale(){ // for offline connection on android
+    let pg_url = "postgres://u0_a130@localhost:5432/TableName"; // ? Always remember to add the table name when you want to use it
+    let _data_pool = PgPoolOptions::new().max_connections(5).connect(pg_url).await;
     println!("Connected to postgres");
 }
 
