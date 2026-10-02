@@ -1,21 +1,47 @@
 // this stores all the streaming functions for the event source and connections to data bases
-use sqlx::postgres::{PgPoolOptions};
+use sqlx::postgres::{PgPoolOptions, PgConnectOptions};
 use futures_util::StreamExt;
 use reqwest::Client;
 use crate::filter::filter_wiki_edits;
 use std::collections::{HashMap};
 use reqwest_eventsource::{EventSource, Event};
 use crate::types::{WIKIEdits, WIKIResponse, ArticleMetrics};
+use std::str::FromStr;
+
 
 // SupaBase Connection
 pub async fn connect_db() -> Result<sqlx::PgPool, Box<dyn std::error::Error>>{
     let db_url = std::env::var("DATABASE_URL")?;
-    let data_pool = PgPoolOptions::new()
-    .max_connections(5)
-    .connect(&db_url).await?;
-    println!("DB URL: {}", std::env::var("DATABASE_URL").unwrap_or("MISSING".into()));
-    Ok(data_pool)
+    
+    let connect_options = PgConnectOptions::from_str(&db_url)?
+        .statement_cache_capacity(0); // disable prepared statement caching — required for PgBouncer transaction mode
+
+    const MAX_ATTEMPTS: u32 = 5;
+    let mut attempt = 1;
+
+    loop {
+        match PgPoolOptions::new()
+            .max_connections(5)
+            .connect_with(connect_options.clone())
+            .await
+        {
+            Ok(pool) => {
+                println!("✅ Connected to Postgres (attempt {attempt})");
+                return Ok(pool);
+            }
+            Err(e) if attempt < MAX_ATTEMPTS => {
+                eprintln!("⚠️  Connection attempt {attempt} failed: {e}. Retrying in 5s...");
+                attempt += 1;
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+            Err(e) => {
+                eprintln!("❌ Failed to connect after {MAX_ATTEMPTS} attempts: {e}");
+                return Err(Box::new(e));
+            }
+        }
+    }
 }
+
 pub async fn _connect_locale(){ // for offline connection on android
     let pg_url = "postgres://u0_a130@localhost:5432/TableName"; // ? Always remember to add the table name when you want to use it
     let _data_pool = PgPoolOptions::new().max_connections(5).connect(pg_url).await;

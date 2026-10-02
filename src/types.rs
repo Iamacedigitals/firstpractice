@@ -12,7 +12,7 @@ struct ArticleId{
 }
 #[derive(serde::Deserialize)]
 #[derive(Debug)]
-struct ArticleMeta{
+pub struct ArticleMeta{
     uri:String,
     domain:String,
 }
@@ -49,7 +49,7 @@ pub struct WIKIResponse {
 pub struct WIKIEdits{
     #[serde(rename = "type")]
     pub event_type: String, 
-    pub page_id: Option<i64>,
+    pub id: Option<i64>,
     pub title:String,
     pub user:String,
     pub bot:bool,
@@ -79,7 +79,7 @@ pub struct ArticleMetrics {
 // Table 1: raw edits — only what's needed to recompute stats later
 #[derive(Debug)]
 pub struct EditRecord {
-    pub page_id: i64,
+    pub id: i64,
     pub delta: i64,
     pub timestamp: i64,
     pub is_anonymous: bool,
@@ -88,7 +88,7 @@ pub struct EditRecord {
 // Table 2: flagged edits only — small, since most edits never land here
 #[derive(Debug)]
 pub struct FlaggedEdit {
-    pub page_id: i64,
+    pub id: i64,
     pub timestamp: i64,
     pub reason: String,   // short tag: "large_deletion" | "blanking" | "anon_burst"
 }
@@ -96,7 +96,7 @@ pub struct FlaggedEdit {
 #[derive(Debug)]
 // Table 3: per-article running totals — one row PER PAGE, not per edit
 pub struct ArticleMetricsRow {
-    pub page_id: i64,
+    pub id: i64,
     pub suspicious_edit_count: i32,
     pub unique_ip_count: i32,
     pub consecutive_reverts: i32,
@@ -110,4 +110,12 @@ pub struct DeltaStatsSnapshot {
     pub p50: f64,
     pub p95: f64,
     pub p99: f64,
+}
+pub struct ScopedEdit {
+    pub title: String,
+    pub timestamp: i64,
+    pub delta: i64,
+    pub old_len: i64,
+    pub editor: String,
+    pub is_revert: bool,
 }
