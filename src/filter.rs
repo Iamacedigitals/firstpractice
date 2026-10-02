@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use crate::{types::{WIKIEdits, ArticleMetrics, EditRecord, FlaggedEdit, ArticleMetricsRow}, db::{insert_edit_record, insert_flagged_edit, insert_delta_snapshot}};
+use crate::{types::{WIKIEdits, ArticleMetrics, EditRecord, FlaggedEdit, ScopedEdit}, db::{insert_edit_record, insert_flagged_edit, insert_scoped_edit}};
 
 
 fn relative_change(response:&WIKIEdits) -> f64{
@@ -30,7 +30,7 @@ async fn filter_edit_bytes(
             metrics.suspicious_edit_count += 1;
 
             let record = EditRecord {
-                page_id: response.page_id.unwrap_or(0),
+                id: response.id.unwrap_or(0),
                 delta,
                 timestamp: response.timestamp as i64,
                 is_anonymous,
@@ -42,7 +42,7 @@ async fn filter_edit_bytes(
 
             if is_suspicious {
                 let flagged = FlaggedEdit {
-                    page_id: record.page_id,
+                    id: record.id,
                     timestamp: record.timestamp,
                     reason: "large_deletion".to_string(),
                 };
@@ -69,7 +69,7 @@ async fn filter_page_blanking(
 
             let is_anonymous = response.user.parse::<std::net::IpAddr>().is_ok();
             let record = EditRecord {
-                page_id: response.page_id.unwrap_or(0),
+                id: response.id.unwrap_or(0),
                 delta: new_len - old_len,
                 timestamp: response.timestamp as i64,
                 is_anonymous,
@@ -81,7 +81,7 @@ async fn filter_page_blanking(
 
             if is_suspicious {
                 let flagged = FlaggedEdit {
-                    page_id: record.page_id,
+                    id: record.id,
                     timestamp: record.timestamp,
                     reason: "blanking".to_string(),
                 };
@@ -93,13 +93,43 @@ async fn filter_page_blanking(
     Ok(false)
 }
 
+// to check if it was reverted in the comments or not
+
+fn is_revert(response: &WIKIEdits) -> bool {
+    match &response.comment {
+        Some(comment) => {
+            let lower = comment.to_lowercase();
+            lower.contains("undo")
+                || lower.contains("revert")
+                || lower.contains("rv ")
+                || lower.starts_with("rv")
+        }
+        None => false,
+    }
+}
+
 pub async fn filter_wiki_edits(pool: &sqlx::PgPool, response: &WIKIEdits, metrics_store: &mut HashMap<Option<i64>, ArticleMetrics>,) -> Result<(), Box<dyn std::error::Error>> {
     if response.event_type == "edit"
     && !response.bot && response.wiki == "enwiki" && response.namespace == 0{
+        // Push the feed to the superbase data table
+        if let Some(len) = &response.length {
+            let scoped = ScopedEdit {
+                title: response.title.clone(),
+                timestamp: response.timestamp as i64,
+                delta: len.new.unwrap_or(0) - len.old.unwrap_or(0),
+                old_len: len.old.unwrap_or(0),
+                editor: response.user.clone(),
+                is_revert: is_revert(response), // small helper, comment-pattern check
+            };
+            insert_scoped_edit(pool, &scoped).await?;
+        }
+
+
+        //Add the relevant data to the hot path
         let metrics = metrics_store
-            .entry(response.page_id)
+            .entry(response.id)
             .or_insert_with(|| ArticleMetrics {
-                id: response.page_id,
+                id: response.id,
                 suspicious_edit_count: 0,
                 unique_ip_editors: HashSet::new(),
                 consecutive_reverts: 0,

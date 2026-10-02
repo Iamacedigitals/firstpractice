@@ -1,4 +1,4 @@
-use crate::types::{EditRecord, FlaggedEdit, ArticleMetricsRow, DeltaStatsSnapshot};
+use crate::types::{ScopedEdit, ArticleMetricsRow, DeltaStatsSnapshot, EditRecord, FlaggedEdit};
 // this should contain all the related database insertions and statistical activities
 
 pub async fn insert_edit_record(pool: &sqlx::PgPool, record: &EditRecord) -> Result<(), sqlx::Error> {
@@ -6,7 +6,7 @@ pub async fn insert_edit_record(pool: &sqlx::PgPool, record: &EditRecord) -> Res
         "INSERT INTO edit_records (page_id, delta, ts, is_anonymous)
          VALUES ($1, $2, $3, $4)"
     )
-    .bind(record.page_id)
+    .bind(record.id)
     .bind(record.delta)
     .bind(record.timestamp)
     .bind(record.is_anonymous)
@@ -26,7 +26,7 @@ pub async fn insert_flagged_edit(
         "INSERT INTO flagged_edits (page_id, ts, reason)
          VALUES ($1, $2, $3)"
     )
-    .bind(flagged.page_id)
+    .bind(flagged.id)
     .bind(flagged.timestamp)
     .bind(&flagged.reason)
     .execute(pool)
@@ -47,7 +47,7 @@ pub async fn upsert_article_metrics(
              unique_ip_count = EXCLUDED.unique_ip_count,
              consecutive_reverts = EXCLUDED.consecutive_reverts"
     )
-    .bind(metrics.page_id)
+    .bind(metrics.id)
     .bind(metrics.suspicious_edit_count)
     .bind(metrics.unique_ip_count)
     .bind(metrics.consecutive_reverts)
@@ -69,6 +69,25 @@ pub async fn insert_delta_snapshot(
     .bind(snapshot.p50)
     .bind(snapshot.p95)
     .bind(snapshot.p99)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+pub async fn insert_scoped_edit(
+    pool: &sqlx::PgPool,
+    scoped: &ScopedEdit,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO scoped_edits (title, timestamp, delta, old_len, editor, is_revert)
+         VALUES ($1, $2, $3, $4, $5, $6)"
+    )
+    .bind(&scoped.title)
+    .bind(scoped.timestamp)
+    .bind(scoped.delta)
+    .bind(scoped.old_len)
+    .bind(&scoped.editor)
+    .bind(scoped.is_revert)
     .execute(pool)
     .await?;
 
