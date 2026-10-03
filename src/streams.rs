@@ -5,7 +5,7 @@ use reqwest::Client;
 use crate::filter::filter_wiki_edits;
 use crate::stats::{spawn_threshold_updater};
 use crate::types::{WIKIEdits, WIKIResponse, ArticleMetrics, SharedThresholds, Thresholds};
-use crate::db::insert_delta_snapshot;
+// use crate::db::insert_delta_snapshot;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::{HashMap};
@@ -60,7 +60,7 @@ WikiResponse pulls all the relevant Edit data from the Websocket
 WikiEdits Do same but we have filtered out all the unneedful data from it
 */ 
 
-pub async fn get_wiki_response(url:&str, client: Client) -> Result<(), Box<dyn std::error::Error>>{
+pub async fn _get_wiki_response(url:&str, client: Client) -> Result<(), Box<dyn std::error::Error>>{
     loop{
         let client_request = client.get(url);
         let mut response = EventSource::new(client_request)?;

@@ -24,11 +24,12 @@ async fn filter_edit_bytes(
 ) -> Result<bool, Box<dyn std::error::Error>> {
 
     let cutoff = get_cutoff(thresholds).await;
+
     if let Some(len) = &response.length {
         let delta = len.new.unwrap_or(0) - len.old.unwrap_or(0);
         let is_anonymous = response.user.parse::<std::net::IpAddr>().is_ok();
 
-        if relative_change(response) < -cutoff || relative_change(response) > cutoff{
+        if relative_change(response) < cutoff.0 || relative_change(response) > cutoff.1{ // 0 for the lower bounds and the cutoff for the higher bounds respectively
             println!("❗Large deletion by {} on \"{}\": {}", response.user, response.title, -delta);
             metrics.suspicious_edit_count += 1;
 
@@ -61,15 +62,15 @@ async fn filter_page_blanking(
     pool: &sqlx::PgPool,
     metrics: &mut ArticleMetrics,
     response: &WIKIEdits,
+    thresholds: &SharedThresholds,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     
-    // thresholds: &SharedThresholds
-    // let cutoff = get_cutoff(thresholds).await;
+    let cutoff = get_cutoff(thresholds).await;
     if let Some(len) = &response.length {
         let new_len = len.new.unwrap_or(0);
         let old_len = len.old.unwrap_or(0);
 
-        if new_len <= 5 && old_len > 100 {
+        if new_len <= cutoff.2 && old_len > 100 {
             println!("❗Page blanking by {} on \"{}\"", response.user, response.title);
             metrics.suspicious_edit_count += 1;
 
@@ -148,7 +149,7 @@ pub async fn filter_wiki_edits(pool: &sqlx::PgPool, response: &WIKIEdits, metric
         // Add the two filters, for editng bytes and for page blanking
         let large_delete = filter_edit_bytes(pool, metrics, response, &thresholds).await?;
         if !large_delete {
-            filter_page_blanking(pool, metrics, response).await?;
+            filter_page_blanking(pool, metrics, response, &thresholds).await?;
         }
     }
     Ok(())

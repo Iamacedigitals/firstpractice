@@ -109,6 +109,8 @@ pub struct ArticleMetricsRow {
 #[derive(Debug)]
 pub struct DeltaStatsSnapshot {
     pub computed_at: i64,
+    pub p1: f64,
+    pub p5: f64,
     pub p50: f64,
     pub p95: f64,
     pub p99: f64,
@@ -124,14 +126,15 @@ pub struct ScopedEdit {
 
 #[derive(Debug, Clone)]
 pub struct Thresholds {
-    pub p95: f64,
-    pub p99: f64,
+    pub lower_bound: f64, // use the 5th percentile first
+    pub upper_bound: f64, // use the 95th percentile first
+    pub blanking_floor:i64,
 }
 
 impl Default for Thresholds {
     fn default() -> Self {
         // fallback values until the first real computation runs
-        Thresholds { p95: 0.5, p99: 0.8 }
+        Thresholds { lower_bound: 0.05, upper_bound: 0.95 , blanking_floor: 0}
     }
 }
 

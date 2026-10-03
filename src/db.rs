@@ -67,6 +67,8 @@ pub async fn insert_delta_snapshot(
          VALUES ($1, $2, $3, $4)"
     )
     .bind(snapshot.computed_at)
+    .bind(snapshot.p1)
+    .bind(snapshot.p5)
     .bind(snapshot.p50)
     .bind(snapshot.p95)
     .bind(snapshot.p99)
