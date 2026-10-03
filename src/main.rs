@@ -1,6 +1,6 @@
 // Building the structs for the websocket/SSE
 use std::collections::{HashMap};
-mod filter; mod types; mod db;mod streams;
+mod filter; mod types; mod db;mod streams; mod stats;
 use streams::{connect_db, get_wiki_edits};
 use types::{ArticleMetrics};
 
@@ -24,6 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
             .user_agent("WorkingAPI/0.1 (davidodii695@gmail.com)")
             .build()?;
     let mut metrics_store: HashMap<Option<i64>, ArticleMetrics> = HashMap::new();
+
     get_wiki_edits(&pool, url, client, &mut metrics_store).await
     //Ok(())
 }

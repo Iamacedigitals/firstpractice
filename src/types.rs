@@ -1,4 +1,6 @@
 // this stores all the related schemas and deserializing structs for the program.
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use std::collections::{HashSet};
 use serde::Deserialize;
 use std::net::IpAddr;
@@ -119,3 +121,18 @@ pub struct ScopedEdit {
     pub editor: String,
     pub is_revert: bool,
 }
+
+#[derive(Debug, Clone)]
+pub struct Thresholds {
+    pub p95: f64,
+    pub p99: f64,
+}
+
+impl Default for Thresholds {
+    fn default() -> Self {
+        // fallback values until the first real computation runs
+        Thresholds { p95: 0.5, p99: 0.8 }
+    }
+}
+
+pub type SharedThresholds = Arc<RwLock<Thresholds>>;
