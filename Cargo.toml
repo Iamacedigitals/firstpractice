@@ -14,3 +14,4 @@ clap = { version = "4", features = ["derive"] }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "chrono"] }
 reqwest-eventsource = "0.6"
 dotenvy = "0.15"
+chrono = "0.4"

@@ -57,6 +57,7 @@ pub async fn upsert_article_metrics(
     Ok(())
 }
 
+// save the delta threshold percentile history across time
 pub async fn insert_delta_snapshot(
     pool: &sqlx::PgPool,
     snapshot: &DeltaStatsSnapshot,
@@ -74,6 +75,7 @@ pub async fn insert_delta_snapshot(
 
     Ok(())
 }
+
 pub async fn insert_scoped_edit(
     pool: &sqlx::PgPool,
     scoped: &ScopedEdit,

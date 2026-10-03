@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use crate::{types::{WIKIEdits, ArticleMetrics, EditRecord, FlaggedEdit, ScopedEdit}, db::{insert_edit_record, insert_flagged_edit, insert_scoped_edit}};
+use crate::{types::{WIKIEdits, ArticleMetrics, EditRecord, FlaggedEdit, ScopedEdit, SharedThresholds}, db::{insert_edit_record, insert_flagged_edit, insert_scoped_edit}, stats::get_cutoff};
 
 
 fn relative_change(response:&WIKIEdits) -> f64{
@@ -20,12 +20,15 @@ async fn filter_edit_bytes(
     pool: &sqlx::PgPool,
     metrics: &mut ArticleMetrics,
     response: &WIKIEdits,
+    thresholds: &SharedThresholds
 ) -> Result<bool, Box<dyn std::error::Error>> {
+
+    let cutoff = get_cutoff(thresholds).await;
     if let Some(len) = &response.length {
         let delta = len.new.unwrap_or(0) - len.old.unwrap_or(0);
         let is_anonymous = response.user.parse::<std::net::IpAddr>().is_ok();
 
-        if relative_change(response) < -0.5 {
+        if relative_change(response) < -cutoff || relative_change(response) > cutoff{
             println!("❗Large deletion by {} on \"{}\": {}", response.user, response.title, -delta);
             metrics.suspicious_edit_count += 1;
 
@@ -59,6 +62,9 @@ async fn filter_page_blanking(
     metrics: &mut ArticleMetrics,
     response: &WIKIEdits,
 ) -> Result<bool, Box<dyn std::error::Error>> {
+    
+    // thresholds: &SharedThresholds
+    // let cutoff = get_cutoff(thresholds).await;
     if let Some(len) = &response.length {
         let new_len = len.new.unwrap_or(0);
         let old_len = len.old.unwrap_or(0);
@@ -108,7 +114,7 @@ fn is_revert(response: &WIKIEdits) -> bool {
     }
 }
 
-pub async fn filter_wiki_edits(pool: &sqlx::PgPool, response: &WIKIEdits, metrics_store: &mut HashMap<Option<i64>, ArticleMetrics>,) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn filter_wiki_edits(pool: &sqlx::PgPool, response: &WIKIEdits, metrics_store: &mut HashMap<Option<i64>, ArticleMetrics>,thresholds: SharedThresholds,) -> Result<(), Box<dyn std::error::Error>> {
     if response.event_type == "edit"
     && !response.bot && response.wiki == "enwiki" && response.namespace == 0{
         // Push the feed to the superbase data table
@@ -138,7 +144,9 @@ pub async fn filter_wiki_edits(pool: &sqlx::PgPool, response: &WIKIEdits, metric
         if let Ok(ip) = response.user.parse::<std::net::IpAddr>() {
             metrics.unique_ip_editors.insert(ip);
         }
-        let large_delete = filter_edit_bytes(pool, metrics, response).await?;
+
+        // Add the two filters, for editng bytes and for page blanking
+        let large_delete = filter_edit_bytes(pool, metrics, response, &thresholds).await?;
         if !large_delete {
             filter_page_blanking(pool, metrics, response).await?;
         }

@@ -3,9 +3,13 @@ use sqlx::postgres::{PgPoolOptions, PgConnectOptions};
 use futures_util::StreamExt;
 use reqwest::Client;
 use crate::filter::filter_wiki_edits;
+use crate::stats::{spawn_threshold_updater};
+use crate::types::{WIKIEdits, WIKIResponse, ArticleMetrics, SharedThresholds, Thresholds};
+use crate::db::insert_delta_snapshot;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use std::collections::{HashMap};
 use reqwest_eventsource::{EventSource, Event};
-use crate::types::{WIKIEdits, WIKIResponse, ArticleMetrics};
 use std::str::FromStr;
 
 
@@ -83,7 +87,9 @@ pub async fn get_wiki_response(url:&str, client: Client) -> Result<(), Box<dyn s
 }
 
 
-pub async fn get_wiki_edits( pool:&sqlx::PgPool ,url:&str, client: Client, metrics_store:&mut HashMap<Option<i64>, ArticleMetrics>) -> Result<(), Box<dyn std::error::Error>>{
+pub async fn get_wiki_edits( pool:&sqlx::PgPool ,url:&str, client: Client, metrics_store:&mut HashMap<Option<i64>, ArticleMetrics>,) -> Result<(), Box<dyn std::error::Error>>{
+    let thresholds: SharedThresholds = Arc::new(RwLock::new(Thresholds::default()));
+    spawn_threshold_updater(pool.clone(), thresholds.clone());
     loop {
         let client_request = client.get(url);
         let mut response = EventSource::new(client_request)?;
@@ -91,7 +97,7 @@ pub async fn get_wiki_edits( pool:&sqlx::PgPool ,url:&str, client: Client, metri
             match event{
                 Ok(Event::Open) => println!("Connection Open"),
                 Ok(Event::Message(message)) => match serde_json::from_str::<WIKIEdits>(&message.data){
-                    Ok(wikieditdata) => filter_wiki_edits(pool, &wikieditdata, metrics_store).await?,
+                    Ok(wikieditdata) => filter_wiki_edits(pool, &wikieditdata, metrics_store,thresholds.clone()).await?,
                     Err(e) => println!("Parse Error: {e}"),
                 },
                 Err(e)=> {
