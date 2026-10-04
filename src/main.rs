@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
     let client = reqwest::Client::builder()
             .user_agent("WorkingAPI/0.1 (davidodii695@gmail.com)")
             .build()?;
-    let mut metrics_store: HashMap<Option<i64>, ArticleMetrics> = HashMap::new();
+    let mut metrics_store: HashMap<String, ArticleMetrics> = HashMap::new();
 
     get_wiki_edits(&pool, url, client, &mut metrics_store).await
     //Ok(())
