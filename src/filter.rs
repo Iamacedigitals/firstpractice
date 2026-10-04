@@ -1,12 +1,15 @@
 use std::collections::{HashMap, HashSet};
-use crate::{types::{WIKIEdits, ArticleMetrics, EditRecord, FlaggedEdit, ScopedEdit, SharedThresholds}, db::{insert_edit_record, insert_flagged_edit, insert_scoped_edit}, stats::get_cutoff};
+use crate::{
+    types::{WIKIEdits, ArticleMetrics, EditRecord, FlaggedEdit, ArticleMetricsRow, ScopedEdit, SharedThresholds},
+    db::{insert_edit_record, insert_flagged_edit, insert_scoped_edit, upsert_article_metrics},
+    stats::get_cutoff,
+};
 
-
-fn relative_change(response:&WIKIEdits) -> f64{
+fn relative_change(response: &WIKIEdits) -> f64 {
     let mut relative_delta = 0.0;
-    if let Some(len) = &response.length{
-        let delta =  len.new.unwrap_or(0) - len.old.unwrap_or(0); // 300 - 250 = 50, // 100 - 250 = -150,  // 600 - 250 = 350
-        if let Some(old_len) = &len.old{ 
+    if let Some(len) = &response.length {
+        let delta = len.new.unwrap_or(0) - len.old.unwrap_or(0);
+        if let Some(old_len) = &len.old {
             if *old_len != 0 {
                 relative_delta = delta as f64 / *old_len as f64;
             }
@@ -15,44 +18,70 @@ fn relative_change(response:&WIKIEdits) -> f64{
     relative_delta
 }
 
-// Filters by edit bytes; Uses the relative byte to check for the volume of the edits befor passing it
+fn is_revert(response: &WIKIEdits) -> bool {
+    match &response.comment {
+        Some(comment) => {
+            let lower = comment.to_lowercase();
+            lower.contains("undo") || lower.contains("revert") || lower.contains("rv ") || lower.starts_with("rv")
+        }
+        None => false,
+    }
+}
+
+async fn sync_article_metrics(pool: &sqlx::PgPool, metrics: &ArticleMetrics) {
+    let row = ArticleMetricsRow {
+        title: metrics.title.clone(),
+        suspicious_edit_count: metrics.suspicious_edit_count as i32,
+        unique_ip_count: metrics.unique_ip_editors.len() as i32,
+        consecutive_reverts: metrics.consecutive_reverts as i32,
+    };
+    if let Err(e) = upsert_article_metrics(pool, &row).await {
+        eprintln!("⚠️ Failed to upsert article_metrics for \"{}\": {e}", metrics.title);
+    }
+}
+
 async fn filter_edit_bytes(
     pool: &sqlx::PgPool,
     metrics: &mut ArticleMetrics,
     response: &WIKIEdits,
-    thresholds: &SharedThresholds
+    thresholds: &SharedThresholds,
 ) -> Result<bool, Box<dyn std::error::Error>> {
-
-    let cutoff = get_cutoff(thresholds).await;
+    let (lower, upper, _) = get_cutoff(thresholds).await;
 
     if let Some(len) = &response.length {
         let delta = len.new.unwrap_or(0) - len.old.unwrap_or(0);
-        let is_anonymous = response.user.parse::<std::net::IpAddr>().is_ok();
+        let change = relative_change(response);
 
-        if relative_change(response) < cutoff.0 || relative_change(response) > cutoff.1{ // 0 for the lower bounds and the cutoff for the higher bounds respectively
-            println!("❗Large deletion by {} on \"{}\": {}", response.user, response.title, -delta);
+        if change < lower || change > upper {
+            let is_anonymous = response.user.parse::<std::net::IpAddr>().is_ok();
+            let (label, reason) = if change < 0.0 {
+                ("Large deletion", "large_deletion")
+            } else {
+                ("Large addition", "large_addition")
+            };
+            println!("❗{label} by {} on \"{}\": {}", response.user, response.title, delta);
             metrics.suspicious_edit_count += 1;
 
             let record = EditRecord {
-                id: response.id.unwrap_or(0),
+                title: response.title.clone(),
                 delta,
                 timestamp: response.timestamp as i64,
                 is_anonymous,
             };
             insert_edit_record(pool, &record).await?;
 
-            let is_suspicious = metrics.suspicious_edit_count >= 3
-                && metrics.unique_ip_editors.len() > 2;
-
+            let is_suspicious = metrics.suspicious_edit_count >= 3 && metrics.unique_ip_editors.len() > 2;
             if is_suspicious {
                 let flagged = FlaggedEdit {
-                    id: record.id,
+                    title: record.title.clone(),
                     timestamp: record.timestamp,
-                    reason: "large_deletion".to_string(),
+                    reason: reason.to_string(),
                 };
                 insert_flagged_edit(pool, &flagged).await?;
             }
-            return Ok(true); // this edit was already classified
+
+            sync_article_metrics(pool, metrics).await;
+            return Ok(true);
         }
     }
     Ok(false)
@@ -64,61 +93,50 @@ async fn filter_page_blanking(
     response: &WIKIEdits,
     thresholds: &SharedThresholds,
 ) -> Result<bool, Box<dyn std::error::Error>> {
-    
-    let cutoff = get_cutoff(thresholds).await;
+    let (_, _, blanking_floor) = get_cutoff(thresholds).await;
+
     if let Some(len) = &response.length {
         let new_len = len.new.unwrap_or(0);
         let old_len = len.old.unwrap_or(0);
 
-        if new_len <= cutoff.2 && old_len > 100 {
+        if new_len <= blanking_floor && old_len > 100 {
             println!("❗Page blanking by {} on \"{}\"", response.user, response.title);
             metrics.suspicious_edit_count += 1;
 
             let is_anonymous = response.user.parse::<std::net::IpAddr>().is_ok();
             let record = EditRecord {
-                id: response.id.unwrap_or(0),
+                title: response.title.clone(),
                 delta: new_len - old_len,
                 timestamp: response.timestamp as i64,
                 is_anonymous,
             };
             insert_edit_record(pool, &record).await?;
 
-            let is_suspicious = metrics.suspicious_edit_count >= 3
-                && metrics.unique_ip_editors.len() > 2;
-
+            let is_suspicious = metrics.suspicious_edit_count >= 3 && metrics.unique_ip_editors.len() > 2;
             if is_suspicious {
                 let flagged = FlaggedEdit {
-                    id: record.id,
+                    title: record.title.clone(),
                     timestamp: record.timestamp,
                     reason: "blanking".to_string(),
                 };
                 insert_flagged_edit(pool, &flagged).await?;
             }
-            return Ok(true); // signals "this edit was already classified"
+
+            sync_article_metrics(pool, metrics).await;
+            return Ok(true);
         }
     }
     Ok(false)
 }
 
-// to check if it was reverted in the comments or not
-
-fn is_revert(response: &WIKIEdits) -> bool {
-    match &response.comment {
-        Some(comment) => {
-            let lower = comment.to_lowercase();
-            lower.contains("undo")
-                || lower.contains("revert")
-                || lower.contains("rv ")
-                || lower.starts_with("rv")
-        }
-        None => false,
-    }
-}
-
-pub async fn filter_wiki_edits(pool: &sqlx::PgPool, response: &WIKIEdits, metrics_store: &mut HashMap<Option<i64>, ArticleMetrics>,thresholds: SharedThresholds,) -> Result<(), Box<dyn std::error::Error>> {
-    if response.event_type == "edit"
-    && !response.bot && response.wiki == "enwiki" && response.namespace == 0{
-        // Push the feed to the superbase data table
+pub async fn filter_wiki_edits(
+    pool: &sqlx::PgPool,
+    response: &WIKIEdits,
+    metrics_store: &mut HashMap<String, ArticleMetrics>,
+    thresholds: SharedThresholds,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if response.event_type == "edit" && !response.bot && response.wiki == "enwiki" && response.namespace == 0 {
+        // Log every scope-passing edit, unconditionally — the unbiased calibration source
         if let Some(len) = &response.length {
             let scoped = ScopedEdit {
                 title: response.title.clone(),
@@ -126,17 +144,16 @@ pub async fn filter_wiki_edits(pool: &sqlx::PgPool, response: &WIKIEdits, metric
                 delta: len.new.unwrap_or(0) - len.old.unwrap_or(0),
                 old_len: len.old.unwrap_or(0),
                 editor: response.user.clone(),
-                is_revert: is_revert(response), // small helper, comment-pattern check
+                is_revert: is_revert(response),
             };
             insert_scoped_edit(pool, &scoped).await?;
         }
 
-
-        //Add the relevant data to the hot path
+        // Hot-path per-article state, keyed by title (no stable page_id exists in this stream)
         let metrics = metrics_store
-            .entry(response.id)
+            .entry(response.title.clone())
             .or_insert_with(|| ArticleMetrics {
-                id: response.id,
+                title: response.title.clone(),
                 suspicious_edit_count: 0,
                 unique_ip_editors: HashSet::new(),
                 consecutive_reverts: 0,
@@ -146,11 +163,17 @@ pub async fn filter_wiki_edits(pool: &sqlx::PgPool, response: &WIKIEdits, metric
             metrics.unique_ip_editors.insert(ip);
         }
 
-        // Add the two filters, for editng bytes and for page blanking
+        if is_revert(response) {
+            metrics.consecutive_reverts += 1;
+        } else {
+            metrics.consecutive_reverts = 0;
+        }
+
         let large_delete = filter_edit_bytes(pool, metrics, response, &thresholds).await?;
         if !large_delete {
             filter_page_blanking(pool, metrics, response, &thresholds).await?;
         }
     }
     Ok(())
+}
 }
