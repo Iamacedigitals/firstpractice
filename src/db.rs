@@ -3,10 +3,10 @@ use crate::types::{ScopedEdit, ArticleMetricsRow, DeltaStatsSnapshot, EditRecord
 
 pub async fn insert_edit_record(pool: &sqlx::PgPool, record: &EditRecord) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "INSERT INTO edit_records (page_id, delta, ts, is_anonymous)
+        "INSERT INTO edit_records (title, delta, timestamp, is_anonymous)
          VALUES ($1, $2, $3, $4)"
     )
-    .bind(record.id)
+    .bind(&record.title)
     .bind(record.delta)
     .bind(record.timestamp)
     .bind(record.is_anonymous)
@@ -15,18 +15,16 @@ pub async fn insert_edit_record(pool: &sqlx::PgPool, record: &EditRecord) -> Res
 
     Ok(())
 }
-// db.rs
-
 
 pub async fn insert_flagged_edit(
     pool: &sqlx::PgPool,
     flagged: &FlaggedEdit,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "INSERT INTO flagged_edits (page_id, ts, reason)
+        "INSERT INTO flagged_edits (title, timestamp, reason)
          VALUES ($1, $2, $3)"
     )
-    .bind(flagged.id)
+    .bind(&flagged.title)
     .bind(flagged.timestamp)
     .bind(&flagged.reason)
     .execute(pool)
@@ -40,14 +38,14 @@ pub async fn upsert_article_metrics(
     metrics: &ArticleMetricsRow,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "INSERT INTO article_metrics (page_id, suspicious_edit_count, unique_ip_count, consecutive_reverts)
+        "INSERT INTO article_metrics (title, suspicious_edit_count, unique_ip_count, consecutive_reverts)
          VALUES ($1, $2, $3, $4)
-         ON CONFLICT (page_id) DO UPDATE SET
+         ON CONFLICT (title) DO UPDATE SET
              suspicious_edit_count = EXCLUDED.suspicious_edit_count,
              unique_ip_count = EXCLUDED.unique_ip_count,
              consecutive_reverts = EXCLUDED.consecutive_reverts"
     )
-    .bind(metrics.id)
+    .bind(&metrics.title)
     .bind(metrics.suspicious_edit_count)
     .bind(metrics.unique_ip_count)
     .bind(metrics.consecutive_reverts)
@@ -63,8 +61,8 @@ pub async fn insert_delta_snapshot(
     snapshot: &DeltaStatsSnapshot,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "INSERT INTO delta_stats_snapshots (computed_at, p50, p95, p99)
-         VALUES ($1, $2, $3, $4)"
+        "INSERT INTO delta_stats_snapshots (computed_at, p1, p5, p50, p95, p99)
+         VALUES ($1, $2, $3, $4, $5, $6)"
     )
     .bind(snapshot.computed_at)
     .bind(snapshot.p1)
