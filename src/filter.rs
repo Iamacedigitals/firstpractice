@@ -135,7 +135,7 @@ pub async fn filter_wiki_edits(
     metrics_store: &mut HashMap<String, ArticleMetrics>,
     thresholds: SharedThresholds,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if response.event_type == "edit" && !response.bot && response.wiki == "enwiki" && response.namespace == 0 {
+    if response.event_type == "edit" && response.bot != true && response.wiki == "enwiki" && response.namespace == 0 {
         // Log every scope-passing edit, unconditionally — the unbiased calibration source
         if let Some(len) = &response.length {
             let scoped = ScopedEdit {
@@ -175,5 +175,4 @@ pub async fn filter_wiki_edits(
         }
     }
     Ok(())
-}
 }

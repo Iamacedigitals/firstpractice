@@ -112,4 +112,4 @@ pub async fn get_wiki_edits( pool:&sqlx::PgPool ,url:&str, client: Client, metri
         println!("Reconnecting in 5s...");
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
-                        }}
+                        }
