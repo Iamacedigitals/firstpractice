@@ -87,7 +87,7 @@ pub async fn _get_wiki_response(url:&str, client: Client) -> Result<(), Box<dyn 
 }
 
 
-pub async fn get_wiki_edits( pool:&sqlx::PgPool ,url:&str, client: Client, metrics_store:&mut HashMap<Option<i64>, ArticleMetrics>,) -> Result<(), Box<dyn std::error::Error>>{
+pub async fn get_wiki_edits( pool:&sqlx::PgPool ,url:&str, client: Client, metrics_store:&mut HashMap<String, ArticleMetrics>,) -> Result<(), Box<dyn std::error::Error>>{
     let thresholds: SharedThresholds = Arc::new(RwLock::new(Thresholds::default()));
     spawn_threshold_updater(pool.clone(), thresholds.clone());
     loop {
@@ -112,4 +112,4 @@ pub async fn get_wiki_edits( pool:&sqlx::PgPool ,url:&str, client: Client, metri
         println!("Reconnecting in 5s...");
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
-}
+                        }
