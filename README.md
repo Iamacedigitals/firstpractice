@@ -4,14 +4,38 @@
 
 ### A real-time Wikipedia edit watcher & anomaly detector, written in Rust
 
-Streams live edits from Wikimedia's `recentchange` feed, parses them into typed Rust structs, flags suspicious behaviour (mass deletions, anonymous edit bursts, revert wars, statistical outliers), stores everything in PostgreSQL, and shows it in a terminal dashboard.
+Streams live edits from Wikimedia's `recentchange` feed, parses them into typed Rust structs, flags suspicious behaviour (mass deletions, anonymous edit bursts, revert wars, statistical outliers), stores everything in Supabase Postgres, and shows it in a terminal dashboard.
+
+
 
 ![Rust](https://img.shields.io/badge/Rust-2024_edition-000000?logo=rust&logoColor=white)
+
+
+
+
 ![Tokio](https://img.shields.io/badge/async-tokio-1f6feb)
-![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-336791?logo=postgresql&logoColor=white)
+
+
+
+
+![Supabase](https://img.shields.io/badge/database-Supabase_Postgres-3ECF8E?logo=supabase&logoColor=white)
+
+
+
+
 ![sqlx](https://img.shields.io/badge/sqlx-0.8-orange)
+
+
+
+
 ![TUI](https://img.shields.io/badge/TUI-ratatui-8A2BE2)
+
+
+
+
 ![Status](https://img.shields.io/badge/status-learning_project-yellow)
+
+
 
 </div>
 
@@ -49,9 +73,8 @@ The project grew in deliberate steps, from a bare stream reader into a small ano
 | Strong typing & parsing | `serde` → `WikiEdit` struct |
 | Error handling | Reconnect logic, malformed events |
 | Data structures | `HashSet`, per-article state maps |
-| Statistics in code | Z-score outlier filter |
-| Databases | `sqlx` + Postgres migrations |
-| CLI design | `clap` derive subcommands |
+| Statistics in code | Percentile-based outlier filter on relative edit change |
+| Databases | `sqlx` + Supabase Postgres migrations |
 | Terminal UI | `ratatui` + `crossterm` |
 
 ---
@@ -60,11 +83,11 @@ The project grew in deliberate steps, from a bare stream reader into a small ano
 
 - 📡 **Live ingestion** from the Wikimedia `recentchange` Server-Sent Events stream
 - 🧱 **Typed parsing** of raw JSON events into a `WikiEdit` struct
-- 🚨 **Anomaly filters** for large deletions, anonymous (IP) edits, edit bursts, and statistical outliers
+- 🚨 **Anomaly filters** for large deletions, anonymous (IP) edits, edit bursts, and percentile-based outliers on relative edit change
 - 📊 **Per-article tracking** via an `ArticleVulnerabilityMetrics` struct (suspicious edit count, unique IP editors, consecutive reverts)
-- 🗄️ **PostgreSQL persistence** with versioned `sqlx` migrations
+- 🗄️ **Supabase Postgres persistence** with versioned `sqlx` migrations
 - 🖥️ **Terminal dashboard** built with `ratatui`
-- ⚙️ **CLI and `.env` configuration** via `clap` and `dotenvy`
+- ⚙️ **`.env` configuration** via `dotenvy`
 
 ---
 
@@ -78,11 +101,11 @@ flowchart LR
     D -->|large deletion| E["⚠️ Flag"]
     D -->|anonymous edit| E
     D -->|edit burst| E
-    D -->|z-score &gt; 3σ| E
+    D -->|outside 5th–95th percentile| E
     D -->|normal| F["✅ Pass-through"]
     E --> G["📊 ArticleVulnerabilityMetrics"]
     F --> G
-    G --> H[("🗄️ PostgreSQL<br/>sqlx")]
+    G --> H[("🗄️ Supabase Postgres<br/>sqlx")]
     G --> I["🖥️ ratatui dashboard"]
 ```
 
@@ -94,7 +117,7 @@ sequenceDiagram
     participant R as Reader (tokio task)
     participant P as Parser
     participant F as Filters
-    participant DB as PostgreSQL
+    participant DB as Supabase Postgres
     participant UI as TUI
 
     W->>R: data: {"type":"edit", ...}
@@ -116,9 +139,9 @@ sequenceDiagram
 | [`reqwest`](https://crates.io/crates/reqwest) | 0.12 | HTTP client (`rustls-tls`, no OpenSSL needed) |
 | [`reqwest-eventsource`](https://crates.io/crates/reqwest-eventsource) | 0.6 | SSE client on top of reqwest |
 | [`serde`](https://crates.io/crates/serde) / [`serde_json`](https://crates.io/crates/serde_json) | 1 | Deserialize events into typed structs |
-| [`sqlx`](https://crates.io/crates/sqlx) | 0.8 | Async Postgres driver and migrations |
+| [`sqlx`](https://crates.io/crates/sqlx) | 0.8 | Async Postgres driver and migrations (connects to Supabase) |
 | [`chrono`](https://crates.io/crates/chrono) | 0.4 | Timestamps |
-| [`clap`](https://crates.io/crates/clap) | 4 (derive) | Command-line interface |
+| [`clap`](https://crates.io/crates/clap) | 4 (derive) | Declared for future CLI; no commands yet |
 | [`dotenvy`](https://crates.io/crates/dotenvy) | 0.15 | Load `.env` configuration |
 | [`ratatui`](https://crates.io/crates/ratatui) | 0.29 | Terminal UI widgets |
 | [`crossterm`](https://crates.io/crates/crossterm) | 0.28 | Terminal backend and input events |
@@ -132,7 +155,7 @@ sequenceDiagram
 ### Prerequisites
 
 - 🦀 **Rust 1.85 or newer** (the crate uses `edition = "2024"`)
-- 🐘 **PostgreSQL** 14+ (local install or Docker)
+- ⚡ **A Supabase project** (hosted Postgres)
 - 🧰 **sqlx-cli** for running migrations
 
 ```bash
@@ -147,20 +170,18 @@ git clone https://github.com/Iamacedigitals/firstpractice.git
 cd firstpractice
 ```
 
-### 2. Start Postgres (Docker option)
+### 2. Create a Supabase project
 
-```bash
-docker run --name wiki-pg \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=firstpractice \
-  -p 5432:5432 -d postgres:16
-```
+1. Create a project at [supabase.com](https://supabase.com).
+2. Open **Project Settings → Database** and copy the Postgres connection string.
+3. Replace the `[YOUR-PASSWORD]` placeholder with your database password.
 
 ### 3. Configure
 
-```bash
-cp .env.example .env   # or create .env by hand, see Configuration below
+Create a `.env` file in the project root:
+
+```env
+DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.<project-ref>.supabase.co:5432/postgres
 ```
 
 ### 4. Run migrations
@@ -185,9 +206,11 @@ Settings are read from environment variables (loaded from `.env` by `dotenvy`).
 
 | Variable | Required | Example | Purpose |
 | --- | :---: | --- | --- |
-| `DATABASE_URL` | ✅ | `postgres://postgres:postgres@localhost:5432/firstpractice` | Postgres connection string used by `sqlx` |
+| `DATABASE_URL` | ✅ | `postgresql://postgres:[YOUR-PASSWORD]@db.<project-ref>.supabase.co:5432/postgres` | Supabase Postgres connection string used by `sqlx` |
 
-> ⚠️ Never commit `.env`. It is listed in `.gitignore`; keep it that way.
+> ⚠️ Never commit `.env`: it contains your database password. It is listed in `.gitignore`; keep it that way.
+
+> 💡 **Supabase connection tip:** prefer the **direct connection** or the **session pooler** for `sqlx` and migrations. Supabase's transaction-mode pooler (port 6543) does not support prepared statements, which `sqlx` uses by default.
 
 **A note on the Wikimedia stream:** Wikimedia asks API clients to send a descriptive `User-Agent` header (tool name plus contact info). Set one on your `reqwest` client so your traffic is identifiable and polite.
 
@@ -195,21 +218,13 @@ Settings are read from environment variables (loaded from `.env` by `dotenvy`).
 
 ## 🕹️ Usage
 
-The CLI is built with `clap`. Run `--help` to see the exact commands available in your build:
+There are **no CLI commands yet**. `clap` is declared as a dependency for when they are added. For now, running the binary starts the pipeline:
 
 ```bash
-cargo run -- --help
-```
-
-Typical flow:
-
-```bash
-# Stream, filter and store edits
 cargo run --release
-
-# Open the terminal dashboard
-cargo run --release -- --help   # check the subcommand for the TUI in your build
 ```
+
+Planned commands are tracked in the [Roadmap](#-roadmap).
 
 ### Terminal dashboard keys
 
@@ -240,10 +255,10 @@ firstpractice/
 
 | Module | Responsibility |
 | --- | --- |
-| `main.rs` | Entry point, CLI parsing, task wiring |
+| `main.rs` | Entry point and task wiring |
 | `stream.rs` | SSE connection, reconnect handling |
 | `model.rs` | `WikiEdit` and related serde types |
-| `filters.rs` | Anomaly rules and z-score logic |
+| `filters.rs` | Anomaly rules and percentile logic |
 | `metrics.rs` | `ArticleVulnerabilityMetrics` and per-article state |
 | `db.rs` | `sqlx` pool, inserts and queries |
 | `tui.rs` | `ratatui` layout, rendering, input loop |
@@ -301,22 +316,22 @@ Candidate signals considered:
 | Anonymous (IP) editor | Higher base rate of abuse, not proof of it |
 | Edit bursts | Many edits to one page in a short window |
 | Consecutive reverts | Possible edit war |
-| Statistical outliers | Edits unusually large or small compared to the norm |
+| Percentile outliers | Edits whose relative change is unusually large or small compared to other edits |
 
 The open question was how to choose thresholds from real data instead of guessing, which led to collecting data first and measuring before deciding.
 
 </details>
 
 <details>
-<summary><b>🔴 Stage 4: Add a statistical outlier filter</b></summary>
+<summary><b>🔴 Stage 4: Add a percentile outlier filter</b></summary>
 
 <br>
 
-**Goal:** a first, simple, explainable model.
+**Goal:** a first, simple, explainable statistical filter.
 
-- Chose a plain **z-score**: flag an edit when its size change sits more than **3 standard deviations** from the mean.
-- This assumes roughly normal data, which is a known simplification (see [Anomaly detection design](#-anomaly-detection-design)).
-- Starting simple keeps the logic easy to test and easy to explain before reaching for heavier models.
+- The filter looks at the **relative change in edit delta**, so a 500-byte change on a tiny page is treated differently from 500 bytes on a huge one.
+- An edit is suspected when its value falls **below the 5th percentile or above the 95th percentile**.
+- Percentiles make no assumption about the shape of the data, which suits edit sizes because they are skewed and heavy-tailed.
 
 </details>
 
@@ -344,13 +359,13 @@ A simple threshold over these fields decides when an article deserves attention.
 </details>
 
 <details>
-<summary><b>🔵 Stage 6: Persist with PostgreSQL</b></summary>
+<summary><b>🔵 Stage 6: Persist to Supabase Postgres</b></summary>
 
 <br>
 
 **Goal:** keep history so thresholds can be tuned from real data.
 
-- `sqlx` talks to Postgres asynchronously.
+- `sqlx` talks to Supabase's hosted Postgres asynchronously.
 - Schema changes live in `migrations/` as ordered SQL files so the database can be rebuilt from scratch with `sqlx migrate run`.
 - Stored history is what makes it possible to answer "what is *normal* for this wiki?" with evidence.
 
@@ -379,32 +394,38 @@ A simple threshold over these fields decides when an article deserves attention.
 | Large deletion | Heuristic threshold | 🟢 Core idea |
 | Anonymous editor | Heuristic flag | 🟢 Core idea |
 | Edit burst | Windowed count | 🟡 In progress |
-| Z-score outlier (3σ) | Statistical | 🟢 First model |
+| Percentile outlier (below 5th / above 95th) | Statistical | 🟢 First model |
 | Consecutive reverts | Per-article counter | 🟡 In progress |
 
-### The z-score filter
+### The percentile filter
 
-For a value `x` (for example, the byte change of an edit), with mean `μ` and standard deviation `σ` estimated from observed data:
+Each edit is scored by its **relative change in edit delta**: how big the byte change is compared with the page's size before the edit.
 
 ```text
-z = (x − μ) / σ        flag if |z| > 3
+relative_change = byte_delta / old_length      (adjust to match your code)
+
+flag if relative_change < P5   or   relative_change > P95
 ```
 
-**Why start here:** it is cheap, explainable, and a good baseline to beat.
+where `P5` and `P95` are the 5th and 95th percentiles of the observed values.
 
-**Known limitations (worth being upfront about):**
+**Why this works well as a first model:**
 
-- Edit-size distributions are typically **heavy-tailed and skewed**, not normal, so a 3σ rule can over- or under-flag.
-- Statistics computed over *all* wikis mix very different communities. Per-wiki baselines are fairer.
-- Large legitimate edits (reverting vandalism, bot clean-ups) can look like outliers.
+- No normality assumption. Percentiles are distribution-free, unlike a z-score.
+- Using a *relative* change stops big pages from dominating the signal.
+- Easy to explain: "this edit is more extreme than 95% of the edits seen."
 
-**Natural upgrades to explore:** median and MAD (robust z-score), log-scaling edit sizes before scoring, per-wiki baselines, and rolling windows so "normal" adapts over time.
+**Trade-offs worth knowing:**
+
+- Cutting at both tails means about 10% of edits are flagged by construction, so it works best as a **candidate filter** combined with other signals (anonymous editor, revert streaks, bursts) rather than a final verdict.
+- The cutoffs depend on what data they are computed from. Per-wiki baselines or a rolling window keep "normal" fair and current.
+- Large legitimate edits (reverting vandalism, bot clean-ups) can land in the tails.
 
 ### Choosing thresholds from data
 
 1. Collect a few days of edits into Postgres.
 2. Plot or tabulate the distribution of byte changes per wiki.
-3. Pick thresholds at chosen percentiles (for example 99th or 99.9th).
+3. Compare the 5th/95th cutoffs against alternatives (for example 1st/99th) and see how the flag rate changes.
 4. Spot-check flagged edits by hand to estimate precision.
 5. Repeat.
 
@@ -412,7 +433,7 @@ z = (x − μ) / σ        flag if |z| > 3
 
 ## 🗄️ Database
 
-Migrations live in [`migrations/`](./migrations) and are applied with `sqlx migrate run`.
+Migrations live in [`migrations/`](./migrations) and are applied with `sqlx migrate run` against your Supabase database.
 
 ```bash
 # create a new migration
@@ -450,12 +471,13 @@ Add a table like this once the schema settles:
 
 - [x] Read the `recentchange` SSE stream
 - [x] Parse events into a typed `WikiEdit`
-- [x] Z-score outlier filter
-- [x] Postgres integration with migrations
+- [x] Percentile outlier filter on relative edit change
+- [x] Supabase Postgres integration with migrations
 - [ ] Finish edit-burst and revert-streak detection
 - [ ] `ArticleVulnerabilityMetrics` threshold alerts
 - [ ] Complete the `ratatui` dashboard
-- [ ] Robust z-score (median/MAD) and per-wiki baselines
+- [ ] Per-wiki and rolling-window percentile baselines
+- [ ] CLI commands (`clap` is declared but unused so far)
 - [ ] Unit tests for each filter using recorded sample events
 - [ ] Graceful shutdown and exponential-backoff reconnects
 - [ ] GitHub Actions CI (`cargo fmt`, `clippy`, `test`)
@@ -468,7 +490,7 @@ Add a table like this once the schema settles:
 | --- | --- |
 | Types beat strings | Parsing once into `WikiEdit` removed a whole class of bugs |
 | Measure before thresholding | Guessing a cutoff is worse than reading the distribution |
-| Simple baselines first | A z-score is easy to reason about and gives something to improve on |
+| Simple baselines first | Percentile cutoffs are easy to reason about and need no normality assumption |
 | Separate ingestion from display | Channels keep the UI from stalling the stream |
 | Public data is messy | `Option` fields and defensive parsing are essential |
 
@@ -487,6 +509,7 @@ This is a personal learning project, but suggestions are welcome.
 
 ## 🙏 Acknowledgements
 
+- [Supabase](https://supabase.com) for hosted Postgres
 - [Wikimedia EventStreams](https://wikitech.wikimedia.org/wiki/Event_Platform/EventStreams) for the free public feed
 - The Rust community and the authors of the crates listed above
 
