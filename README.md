@@ -1,6 +1,7 @@
 <div align="center">
 
-# 🛰️ firstpractice
+# Wiki Anomaly Tracker 
+#### My First Rust Mini Project
 
 ### A real-time Wikipedia edit watcher & anomaly detector, written in Rust
 
