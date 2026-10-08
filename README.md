@@ -9,34 +9,7 @@ Streams live edits from Wikimedia's `recentchange` feed, parses them into typed 
 
 
 
-![Rust](https://img.shields.io/badge/Rust-2024_edition-000000?logo=rust&logoColor=white)
-
-
-
-
-![Tokio](https://img.shields.io/badge/async-tokio-1f6feb)
-
-
-
-
-![Supabase](https://img.shields.io/badge/database-Supabase_Postgres-3ECF8E?logo=supabase&logoColor=white)
-
-
-
-
-![sqlx](https://img.shields.io/badge/sqlx-0.8-orange)
-
-
-
-
-![TUI](https://img.shields.io/badge/TUI-ratatui-8A2BE2)
-
-
-
-
-![Status](https://img.shields.io/badge/status-learning_project-yellow)
-
-
+![Rust](https://img.shields.io/badge/Rust-2024_edition-000000?logo=rust&logoColor=white)![Tokio](https://img.shields.io/badge/async-tokio-1f6feb)![Supabase](https://img.shields.io/badge/database-Supabase_Postgres-3ECF8E?logo=supabase&logoColor=white)![sqlx](https://img.shields.io/badge/sqlx-0.8-orange)![TUI](https://img.shields.io/badge/TUI-ratatui-8A2BE2)![Status](https://img.shields.io/badge/status-learning_project-yellow)
 
 </div>
 
